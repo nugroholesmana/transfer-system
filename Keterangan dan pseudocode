@@ -1,0 +1,97 @@
+Scope Service Transfer System :
+- Menambahkan User (Nasabah)
+- Melakukan transfer ke 1 rekening
+
+Endpoint: POST /api/v1/users
+Request Body:
+{
+    "nik": "1244",
+    "fullName": "Nugroho",
+    "email": "nugroholesmanap@gmail.com",
+    "phoneNumber": "085264958430",
+    "pin": "1234",
+    "accountNumber": "12344555",
+    "balance": 0
+}
+
+Penjelasan Field:
+- nik : nomor nik ktp
+- fullName : Nama lengkap
+- email : alamat email
+- phoneNumber : nomor HP
+- pin : kode rahasia yang digunakan untuk melakukan transaksi
+- accountNumber : nomor rekening
+- balance : jumlah saldo didalam rekening
+
+Endpoint: POST /api/v1/transfers
+Request Body:
+{
+  "pin": "123456",
+  "senderAccountNumber": "1234567890",
+  "receiverAccountNumber": "9876543210",
+  "amount": 1000.00,
+  "channel": "Mobile Banking",
+  "receiverBankCode": "XYZ",
+  "memo": "Transfer from User A to User B",
+  "transferType": "Internal"
+}
+
+Penjelasan Field:
+- pin : Nomor PIN punya nasabah pengirim
+- senderAccountNumber : Nomor rekening pengirim
+- receiverAccountNumber : Nomor rekening penerima
+- amount : Jumlah uang yang akan dikirim
+- channel : Mobile banking, ATM dll
+- receiverBankCode : kode bank
+- memo : berita acara
+- transferType: sebagai catatan mengirim ke rekening internal (sesama bank) atau eksternal (bank berbeda)
+
+Pseudocode:
+
+try {
+  // Step 1: Validasi PIN
+  User sender = userRepository.findByAccountNumberAndPin(request.senderAccountNumber, request.pin);
+  if (sender == null) {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid PIN");
+  }
+
+  // Step 2: Validasi Saldo
+  BigDecimal amount = request.amount;
+  if (sender.balance < amount) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Insufficient balance");
+  }
+
+  // Step 3: Proses Transfer
+  Transfer transfer = new Transfer();
+  transfer.setSenderAccountNumber(request.senderAccountNumber);
+  transfer.setReceiverAccountNumber(request.receiverAccountNumber);
+  transfer.setReceiverBankCode(request.receiverBankCode);
+  transfer.setAmount(amount);
+  transfer.setChannel(request.channel);
+  transfer.setMemo(request.memo);
+  transfer.setReferenceNumber(generateUniqueReferenceNumber()); // Fungsi untuk membuat reference number unik
+
+  transferRepository.save(transfer);
+
+  // Step 4: Update Saldo
+  sender.setBalance(sender.balance - amount);
+  userRepository.save(sender);
+
+  // Step 5: Catat Transaksi
+  Transaction transaction = new Transaction();
+  transaction.setUserId(sender.getUserId());
+  transaction.setAmount(amount);
+  transaction.setAdminFee(BigDecimal.ZERO); // Bisa disesuaikan dengan kebijakan biaya administrasi
+  transaction.setTransactionType("Transfer");
+  transaction.setChannel(request.channel);
+  transaction.setMemo(request.memo);
+  transaction.setTransferId(transfer.getTransferId());
+
+  transactionRepository.save(transaction);
+
+  // Step 6: Response
+  return ResponseEntity.status(HttpStatus.OK).body("Transfer successful. Reference Number: " + transfer.getReferenceNumber());
+} catch (Exception e) {
+  // Tangani kesalahan secara umum
+  return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal Server Error");
+}
